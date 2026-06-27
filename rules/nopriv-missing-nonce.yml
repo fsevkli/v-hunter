@@ -1,0 +1,113 @@
+rules:
+  - id: wp-nopriv-missing-nonce
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied input ($SOURCE) reaches a state-mutating operation without
+      nonce verification. On hooks registered with wp_ajax_nopriv_ or
+      admin_post_nopriv_, any unauthenticated visitor can trigger this action
+      (CWE-352). Add check_ajax_referer() or wp_verify_nonce() before processing.
+    metadata:
+      cwe: "CWE-352: Cross-Site Request Forgery (CSRF)"
+      confidence: MEDIUM
+
+    # Scope strictly to unauthenticated hook handlers. Without this, the rule
+    # fires on every taint flow anywhere in the codebase.
+    pattern-inside-either:
+      # ----- Named function callbacks -----
+      - pattern: |
+          add_action('wp_ajax_nopriv_'.$ACTION, '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('admin_post_nopriv_'.$ACTION, '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      # ----- Array callbacks -----
+      - pattern: |
+          add_action('wp_ajax_nopriv_'.$ACTION, [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('admin_post_nopriv_'.$ACTION, [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('wp_ajax_nopriv_'.$ACTION, array($OBJ, '$METHOD'));
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('admin_post_nopriv_'.$ACTION, array($OBJ, '$METHOD'));
+          ...
+          function $METHOD(...) { ... }
+      # ----- Closure callbacks -----
+      - pattern: |
+          add_action('wp_ajax_nopriv_'.$ACTION, function(...) {
+            ...
+          });
+      - pattern: |
+          add_action('admin_post_nopriv_'.$ACTION, function(...) {
+            ...
+          });
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      # JSON request body
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+
+    pattern-sinks:
+      # ---------- Site-wide settings ----------
+      - pattern: update_option($NAME, $VAL)
+      - pattern: add_option($NAME, $VAL)
+      - pattern: delete_option($NAME)
+      - pattern: update_site_option($NAME, $VAL)
+      # ---------- Post / content ----------
+      - pattern: wp_insert_post($DATA, ...)
+      - pattern: wp_update_post($DATA, ...)
+      - pattern: wp_delete_post($ID, ...)
+      - pattern: update_post_meta(...)
+      - pattern: delete_post_meta(...)
+      # ---------- User ----------
+      - pattern: wp_insert_user($DATA)
+      - pattern: wp_update_user($DATA)
+      - pattern: wp_delete_user(...)
+      - pattern: wp_set_password(...)
+      - pattern: update_user_meta($ID, $KEY, $VAL)
+      - pattern: delete_user_meta($ID, $KEY)
+      # ---------- Raw DB ----------
+      - pattern: $wpdb->query($QUERY)
+      - pattern: $wpdb->insert(...)
+      - pattern: $wpdb->update(...)
+      - pattern: $wpdb->delete(...)
+      # ---------- Email ----------
+      - pattern: wp_mail($TO, ...)
+      # ---------- File ops triggered by request ----------
+      - pattern: unlink(...)
+      - pattern: move_uploaded_file(...)
+
+    pattern-sanitizers:
+      # Nonce verification — the only valid CSRF mitigation for unauthenticated hooks
+      - pattern: check_ajax_referer(...)
+      - pattern: wp_verify_nonce(...)
+      - pattern: check_admin_referer(...)
+      # SQL parameterization (suppresses FPs on $wpdb->query sink)
+      - pattern: $wpdb->prepare(...)
+      # Integer coercion (safe for numeric IDs)
+      - pattern: intval(...)
+      - pattern: absint(...)
+      - pattern: (int) $X
+      - pattern: (integer) $X
+      - pattern: sanitize_key(...)
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED

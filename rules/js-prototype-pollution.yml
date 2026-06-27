@@ -1,0 +1,62 @@
+rules:
+  - id: wp-js-prototype-pollution
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Deep merge / recursive extend invoked with a potentially attacker-
+      controlled source object. If the source contains a key named
+      "__proto__", "constructor", or "prototype", the merge will write to
+      Object.prototype and pollute every object in the runtime (CWE-1321).
+      In WordPress admin / block-editor / Gutenberg contexts this leads
+      to DOM XSS, escalation, or option-tampering. Verify the source is
+      a server-trusted shape, or use Object.assign / lodash.mergeWith with
+      a customizer that rejects forbidden keys.
+    metadata:
+      cwe: "CWE-1321: Improperly Controlled Modification of Object Prototype Attributes"
+      confidence: MEDIUM
+
+    pattern-either:
+      # jQuery deep extend — the classic vector
+      - pattern: jQuery.extend(true, $TARGET, $SRC)
+      - pattern: jQuery.extend(true, $TARGET, ...)
+      - pattern: $.extend(true, $TARGET, $SRC)
+      - pattern: $.extend(true, $TARGET, ...)
+      # lodash / underscore
+      - pattern: _.merge($TARGET, $SRC)
+      - pattern: _.merge($TARGET, ...)
+      - pattern: _.mergeWith($TARGET, ...)
+      - pattern: _.defaultsDeep($TARGET, ...)
+      - pattern: _.set($TARGET, $PATH, $VALUE)
+      - pattern: _.setWith($TARGET, $PATH, $VALUE, ...)
+      # lodash named import
+      - pattern: lodash.merge($TARGET, ...)
+      - pattern: lodash.mergeWith($TARGET, ...)
+      - pattern: lodash.defaultsDeep($TARGET, ...)
+      - pattern: lodash.set($TARGET, $PATH, $VALUE)
+      # Generic deep-merge helpers commonly bundled
+      - pattern: deepmerge($TARGET, $SRC)
+      - pattern: deepExtend($TARGET, $SRC)
+      # Direct property assignment by computed key is unsafe if key is user-controlled
+      - pattern: $OBJ[$KEY] = $VAL
+        # Without taint mode we can't restrict to user-controlled $KEY here;
+        # this is intentionally absent from the rule to keep noise manageable.
+
+  - id: wp-js-document-write-userdata
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      User-controlled value passed to a DOM sink that parses HTML (document.write,
+      element.innerHTML, element.outerHTML, jQuery.html). This is a DOM-based
+      XSS vector (CWE-79). Use textContent or jQuery.text() instead.
+    metadata:
+      cwe: "CWE-79: Cross-site Scripting (XSS) — DOM"
+      confidence: MEDIUM
+
+    pattern-either:
+      - pattern: document.write($X)
+      - pattern: document.writeln($X)
+      - pattern: $EL.innerHTML = $X
+      - pattern: $EL.outerHTML = $X
+      - pattern: $EL.insertAdjacentHTML($POS, $X)
+      - pattern: $($SEL).html($X)
+      - pattern: jQuery($SEL).html($X)

@@ -1,0 +1,119 @@
+rules:
+  # Rule 1: Direct user input reaches a $wpdb query without prepare().
+  # $wpdb->prepare(...) is a sanitizer here — safe placeholder usage is silenced.
+  - id: wp-sqli
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied input reaches a $wpdb query method without going through
+      $wpdb->prepare(). This is a SQL injection vulnerability (CWE-89).
+    metadata:
+      cwe: "CWE-89: SQL Injection"
+      confidence: HIGH
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      # JSON request body
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      # WP REST API request parameters
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+      - pattern: $REQ->get_body()
+
+    pattern-sinks:
+      - pattern: $wpdb->query($QUERY)
+      - pattern: $wpdb->get_results($QUERY)
+      - pattern: $wpdb->get_var($QUERY)
+      - pattern: $wpdb->get_row($QUERY)
+      - pattern: $wpdb->get_col($QUERY)
+      # Table-name argument of $wpdb->insert/update/delete/replace is NOT auto-escaped.
+      # Values (later args) ARE escaped by $wpdb, so focus only on the table position.
+      - patterns:
+          - pattern-either:
+              - pattern: $wpdb->insert($TABLE, ...)
+              - pattern: $wpdb->update($TABLE, ...)
+              - pattern: $wpdb->delete($TABLE, ...)
+              - pattern: $wpdb->replace($TABLE, ...)
+          - focus-metavariable: $TABLE
+      # dbDelta runs the raw SQL it's given
+      - pattern: dbDelta($QUERY)
+      # Legacy direct mysql APIs
+      - pattern: mysqli_query($CONN, $QUERY)
+      - pattern: mysql_query($QUERY)
+
+    pattern-sanitizers:
+      - pattern: $wpdb->prepare(...)
+      - pattern: intval(...)
+      - pattern: absint(...)
+      - pattern: (int) $X
+      - pattern: (integer) $X
+      - pattern: esc_sql(...)
+      - pattern: sanitize_key(...)
+      - pattern: array_map('intval', ...)
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED
+
+  # Rule 2: User input concatenated into the $wpdb->prepare() format string itself.
+  # The sink is the first argument (format string) of prepare(), not the query methods.
+  # Safe placeholder form — $wpdb->prepare("...", $_GET['id']) — is NOT flagged because
+  # $_GET['id'] lands in the second argument, not the tainted $SINK position.
+  - id: wp-sqli-prepare-concat
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied input is concatenated directly into the $wpdb->prepare() format
+      string, bypassing parameterisation (CWE-89). Use %d / %s placeholders and pass
+      user input as separate arguments instead.
+    metadata:
+      cwe: "CWE-89: SQL Injection"
+      confidence: HIGH
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+
+    pattern-sinks:
+      # Flag only when taint reaches the FORMAT STRING argument (first arg).
+      # If taint is only in a later argument (safe placeholder), $SINK is clean.
+      - patterns:
+          - pattern: $wpdb->prepare($SINK, ...)
+          - focus-metavariable: $SINK
+
+    pattern-sanitizers:
+      - pattern: intval(...)
+      - pattern: absint(...)
+      - pattern: (int) $X
+      - pattern: (integer) $X
+      - pattern: esc_sql(...)
+      - pattern: sanitize_key(...)
+      - pattern: array_map('intval', ...)
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED

@@ -1,0 +1,83 @@
+rules:
+  - id: wp-path-traversal-precise
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied input reaches a file operation without a safe realpath() or basename() guard,
+      creating a Path Traversal vulnerability (CWE-22).
+    metadata:
+      cwe: "CWE-22: Path Traversal"
+      confidence: HIGH
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      # JSON request body
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      # WP REST API request parameters
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+      # Uploaded file metadata can carry path-traversal payloads (filename, type)
+      - pattern: $_FILES[$KEY]['name']
+      - pattern: $_FILES[$KEY]['tmp_name']
+
+    pattern-sinks:
+      # File read operations
+      - pattern: file_get_contents($PATH, ...)
+      - pattern: readfile($PATH)
+      - pattern: fopen($PATH, ...)
+      - pattern: file($PATH, ...)
+      - pattern: parse_ini_file($PATH, ...)
+      - pattern: simplexml_load_file($PATH, ...)
+      - pattern: getimagesize($PATH, ...)
+      # File write operations
+      - pattern: file_put_contents($PATH, ...)
+      - pattern: unlink($PATH)
+      - pattern: rename($SRC, $PATH)
+      - pattern: rename($PATH, $DST)
+      - pattern: copy($SRC, $PATH)
+      - pattern: copy($PATH, $DST)
+      - pattern: chmod($PATH, ...)
+      - pattern: touch($PATH, ...)
+      # Directory operations
+      - pattern: mkdir($PATH, ...)
+      - pattern: rmdir($PATH)
+      - pattern: opendir($PATH)
+      - pattern: scandir($PATH, ...)
+      - pattern: glob($PATH, ...)
+      # WP_Filesystem operations
+      - pattern: $wp_filesystem->get_contents($PATH)
+      - pattern: $wp_filesystem->put_contents($PATH, ...)
+      - pattern: $wp_filesystem->delete($PATH, ...)
+      - pattern: $wp_filesystem->exists($PATH)
+      # PHAR-triggering metadata reads (phar:// stream wrappers deserialize)
+      - pattern: file_exists($PATH)
+      - pattern: is_file($PATH)
+      - pattern: is_dir($PATH)
+      # Execution/Inclusion statements
+      - pattern: include $PATH
+      - pattern: include_once $PATH
+      - pattern: require $PATH
+      - pattern: require_once $PATH
+
+    pattern-sanitizers:
+      - pattern: realpath(...)
+      - pattern: basename(...)
+      - pattern: wp_basename(...)
+      - pattern: sanitize_file_name(...)
+      # validate_file() is the gold standard for WordPress path validation
+      - pattern: validate_file(...)
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED

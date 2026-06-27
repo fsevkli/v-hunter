@@ -1,0 +1,189 @@
+rules:
+  - id: wp-missing-cap-check-precise
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      A privileged data mutation occurs inside an action hook without an explicit
+      current_user_can() authorization check. This leads to Privilege Escalation (CWE-862).
+    metadata:
+      cwe: "CWE-862: Missing Authorization"
+      confidence: HIGH
+
+    # Target functions explicitly registered to handle standard authenticated hooks
+    # (where ANY logged-in user, like a Subscriber, can execute the function by default)
+    pattern-inside-either:
+      # ----- Named function callbacks -----
+      - pattern: |
+          add_action('wp_ajax_'.$ACTION, '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('admin_post_'.$ACTION, '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('admin_init', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('init', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('wp_loaded', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      # ----- Array callbacks: instance method [$this, 'method'] -----
+      - pattern: |
+          add_action('wp_ajax_'.$ACTION, [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('admin_post_'.$ACTION, [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('admin_init', [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('init', [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      # ----- Array callbacks: static method [ClassName::class, 'method'] / [__CLASS__, 'method'] -----
+      - pattern: |
+          add_action('wp_ajax_'.$ACTION, array($OBJ, '$METHOD'));
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('admin_post_'.$ACTION, array($OBJ, '$METHOD'));
+          ...
+          function $METHOD(...) { ... }
+      # ----- save_post / save_post_{type} hooks — fire for Contributor+ -----
+      - pattern: |
+          add_action('save_post', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('save_post_$POST_TYPE', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('save_post', [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('save_post', function(...) { ... });
+      # ----- comment hooks — fire for any logged-in user / sometimes anon -----
+      - pattern: |
+          add_action('wp_insert_comment', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('comment_post', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      # ----- Closure callbacks -----
+      - pattern: |
+          add_action('wp_ajax_'.$ACTION, function(...) {
+            ...
+          });
+      - pattern: |
+          add_action('admin_post_'.$ACTION, function(...) {
+            ...
+          });
+      - pattern: |
+          add_action('admin_init', function(...) {
+            ...
+          });
+      - pattern: |
+          add_action('init', function(...) {
+            ...
+          });
+      # ----- REST API endpoints with permission_callback bypassed -----
+      - pattern: |
+          register_rest_route(..., array(
+            ...,
+            'callback' => '$FUNC',
+            ...,
+            'permission_callback' => '__return_true',
+            ...
+          ));
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          register_rest_route(..., array(
+            ...,
+            'callback' => [$OBJ, '$METHOD'],
+            ...,
+            'permission_callback' => '__return_true',
+            ...
+          ));
+          ...
+          function $METHOD(...) { ... }
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      # JSON request body — common in modern AJAX / REST handlers
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      # WP REST API request parameters
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+      - pattern: $REQ->get_body()
+      - pattern: $REQ[$KEY]
+
+    # Limit sinks strictly to high-impact administrative data mutations
+    pattern-sinks:
+      # Settings modification
+      - pattern: update_option(...)
+      - pattern: add_option(...)
+      - pattern: delete_option(...)
+      - pattern: update_site_option(...)
+      - pattern: add_site_option(...)
+      - pattern: delete_site_option(...)
+      # User role / account elevation
+      - pattern: wp_insert_user(...)
+      - pattern: wp_update_user(...)
+      - pattern: wp_set_password(...)
+      - pattern: wp_delete_user(...)
+      - pattern: wp_set_current_user(...)
+      - pattern: wp_signon(...)
+      - pattern: update_user_meta(...)
+      - pattern: delete_user_meta(...)
+      - pattern: add_user_meta(...)
+      # Post / content mutations
+      - pattern: wp_insert_post(...)
+      - pattern: wp_update_post(...)
+      - pattern: wp_delete_post(...)
+      - pattern: wp_trash_post(...)
+      - pattern: update_post_meta(...)
+      - pattern: delete_post_meta(...)
+      # Term / taxonomy mutations
+      - pattern: wp_set_object_terms(...)
+      - pattern: wp_insert_term(...)
+      - pattern: wp_delete_term(...)
+      # Raw DB mutations
+      - pattern: $wpdb->query($QUERY)
+      - pattern: $wpdb->insert(...)
+      - pattern: $wpdb->update(...)
+      - pattern: $wpdb->delete(...)
+      - pattern: $wpdb->replace(...)
+      # Plugin/theme management
+      - pattern: activate_plugin(...)
+      - pattern: deactivate_plugins(...)
+      - pattern: delete_plugins(...)
+      - pattern: switch_theme(...)
+
+    # ONLY explicit capability boundaries serve as valid sanitizers for an Authorization rule
+    pattern-sanitizers:
+      - pattern: current_user_can(...)
+      - pattern: user_can(...)
+      - pattern: current_user_can_for_blog(...)
+      - pattern: author_can(...)
+      - pattern: is_super_admin(...)

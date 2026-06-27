@@ -1,0 +1,93 @@
+rules:
+  - id: wp-reflected-xss-precise
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied input ($SOURCE) is output to the browser without an escaping function,
+      creating a reflected XSS vulnerability (CWE-79).
+    metadata:
+      cwe: "CWE-79: Cross-site Scripting (XSS)"
+      confidence: HIGH
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      # Only target the specific $_SERVER keys that an attacker can control via HTTP headers
+      - pattern-either:
+          - pattern: $_SERVER['HTTP_X_FORWARDED_FOR']
+          - pattern: $_SERVER['HTTP_REFERER']
+          - pattern: $_SERVER['PHP_SELF']
+          - pattern: $_SERVER['REQUEST_URI']
+          - pattern: $_SERVER['HTTP_USER_AGENT']
+          - pattern: $_SERVER['HTTP_HOST']
+          - pattern: $_SERVER['PATH_INFO']
+          - pattern: $_SERVER['QUERY_STRING']
+      # Native PHP accessors
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      - pattern: filter_input(INPUT_COOKIE, ...)
+      - pattern: filter_input(INPUT_SERVER, ...)
+      # JSON request body
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      # WP REST API request parameters
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+      # Attacker-controlled HTTP headers
+      - pattern: getallheaders()
+      - pattern: apache_request_headers()
+      # Shortcode attributes — Contributor/Author can inject arbitrary values
+      # via post content; any shortcode attr is attacker-controlled.
+      - patterns:
+          - pattern-inside: |
+              add_shortcode($NAME, function($ATTS, ...) { ... });
+          - pattern: $ATTS[$KEY]
+      - patterns:
+          - pattern-inside: |
+              add_shortcode($NAME, function($ATTS, ...) { ... });
+          - pattern: shortcode_atts($DEFAULTS, $ATTS, ...)
+
+    pattern-sinks:
+      - pattern: echo $X;
+      - pattern: print $X;
+      - pattern: wp_die($X);
+      - pattern: _e($X);
+      # Tracks if ANY parameter inside a printf/sprintf wrapper is tainted
+      - pattern: printf(..., $X, ...)
+      - pattern: vprintf(..., $X, ...)
+
+    pattern-sanitizers:
+      - pattern: esc_html(...)
+      - pattern: esc_attr(...)
+      - pattern: esc_url(...)
+      - pattern: esc_js(...)
+      - pattern: esc_textarea(...)
+      - pattern: esc_html__(...)
+      - pattern: esc_attr__(...)
+      - pattern: esc_html_e(...)
+      - pattern: esc_attr_e(...)
+      - pattern: wp_kses(...)
+      - pattern: wp_kses_post(...)
+      - pattern: sanitize_text_field(...)
+      - pattern: intval(...)
+      - pattern: absint(...)
+      - pattern: (int) $X
+      - pattern: htmlspecialchars(...)
+      - pattern: htmlentities(...)
+      - pattern: strip_tags(...)
+      - pattern: wp_send_json(...)
+      - pattern: wp_send_json_success(...)
+      - pattern: wp_send_json_error(...)
+      - pattern: json_encode(...)
+      - pattern: wp_json_encode(...)
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED

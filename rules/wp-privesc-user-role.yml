@@ -1,0 +1,60 @@
+rules:
+  - id: wp-privesc-user-role
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied input reaches wp_update_user() or wp_insert_user() without
+      a capability check. If the caller can pass an arbitrary 'role' or
+      'wp_capabilities' value, any user can escalate to Administrator (CWE-269).
+    metadata:
+      cwe: "CWE-269: Improper Privilege Management"
+      confidence: HIGH
+
+    paths:
+      exclude:
+        - "**/vendor/**"
+        - "**/node_modules/**"
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      # JSON request body
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      # WP REST API
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+      - pattern: $REQ->get_body()
+
+    pattern-sinks:
+      # Any call to wp_update_user / wp_insert_user with tainted data
+      # (mass-assignment: attacker may include 'role' key in the array)
+      - pattern: wp_update_user($DATA)
+      - pattern: wp_insert_user($DATA)
+      # Direct manipulation of the capabilities meta key
+      - pattern: update_user_meta($ID, 'wp_capabilities', $CAP)
+      - pattern: add_user_meta($ID, 'wp_capabilities', $CAP)
+      - pattern: update_user_meta($ID, "wp_capabilities", $CAP)
+      - pattern: add_user_meta($ID, "wp_capabilities", $CAP)
+      # set_role() on a WP_User object
+      - pattern: $USER->set_role($ROLE)
+      - pattern: $USER->add_role($ROLE)
+
+    pattern-sanitizers:
+      - pattern: current_user_can(...)
+      - pattern: user_can(...)
+      - pattern: is_super_admin(...)
+      # Explicit role whitelist check blocks escalation
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED

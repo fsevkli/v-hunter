@@ -1,0 +1,53 @@
+rules:
+  - id: wp-arbitrary-file-upload-precise
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied file properties flow directly into an application file operation
+      without prior extension or MIME allowlist verification. This can lead to Remote Code Execution (CWE-434).
+    metadata:
+      cwe: "CWE-434: Unrestricted Upload of File with Dangerous Type"
+      confidence: HIGH
+
+    pattern-sources:
+      # Track any dynamic component pulled directly out of the global file matrix
+      - pattern: $_FILES[...]
+      - pattern: $_FILES[$_GET[...]][...]
+      - pattern: $_FILES[$_POST[...]][...]
+      # REST API file uploads
+      - pattern: $REQ->get_file_params()
+
+    pattern-sinks:
+      # Isolate tracking specifically to the destination payload path parameter
+      - patterns:
+          - pattern-either:
+              - pattern: move_uploaded_file($TMP, $DEST)
+              - pattern: copy($TMP, $DEST)
+              - pattern: rename($TMP, $DEST)
+              - pattern: file_put_contents($DEST, ...)
+          - focus-metavariable: $DEST
+      # wp_upload_bits writes raw bytes — file extension comes from the first arg
+      - patterns:
+          - pattern: wp_upload_bits($NAME, ...)
+          - focus-metavariable: $NAME
+
+    pattern-sanitizers:
+      # Native WordPress secure upload wrappers & sanitizers
+      - pattern: wp_check_filetype_and_ext(...)
+      - pattern: wp_check_filetype(...)
+      - pattern: wp_handle_upload(...)
+      - pattern: wp_handle_sideload(...)
+      - pattern: media_handle_upload(...)
+      - pattern: media_handle_sideload(...)
+      - pattern: sanitize_file_name(...)
+      # Native PHP cryptographic or file type lookups
+      - pattern: mime_content_type(...)
+      - pattern: finfo_file(...)
+      - pattern: pathinfo(...)
+      # Explicit validation boundaries
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED

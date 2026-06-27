@@ -1,0 +1,70 @@
+rules:
+  - id: wp-stored-xss
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      Data retrieved from the database ($SOURCE) is echoed without output escaping,
+      creating a potential Stored XSS vulnerability (CWE-79). If the stored value
+      originated from user input, an attacker may inject persistent JavaScript.
+      Wrap output in esc_html(), esc_attr(), or esc_url() depending on context.
+    metadata:
+      cwe: "CWE-79: Cross-site Scripting (XSS)"
+      confidence: MEDIUM
+
+    # DB-fetch sources: these represent data that may have originated from user input.
+    # The triager must verify whether the write path accepted user-controlled values.
+    pattern-sources:
+      - pattern: $wpdb->get_var($QUERY)
+      - pattern: $wpdb->get_results($QUERY)
+      - pattern: $wpdb->get_row($QUERY)
+      - pattern: $wpdb->get_col($QUERY)
+      - pattern: get_comment_meta($ID, $KEY, ...)
+      - pattern: get_user_meta($ID, $KEY, ...)
+      - pattern: get_post_meta($ID, $KEY, ...)
+      - pattern: get_term_meta($ID, $KEY, ...)
+      - pattern: get_metadata(...)
+      - pattern: get_option($KEY)
+      - pattern: get_site_option($KEY)
+      - pattern: get_transient($KEY)
+      - pattern: get_site_transient($KEY)
+      - pattern: wp_get_attachment_metadata(...)
+
+    pattern-sinks:
+      - pattern: echo $X;
+      - pattern: print $X;
+      - pattern: wp_die($X);
+      - pattern: _e($X);
+      - pattern: printf(..., $X, ...)
+      - pattern: vprintf(..., $X, ...)
+
+    pattern-sanitizers:
+      - pattern: esc_html(...)
+      - pattern: esc_attr(...)
+      - pattern: esc_url(...)
+      - pattern: esc_js(...)
+      - pattern: esc_textarea(...)
+      - pattern: esc_html__(...)
+      - pattern: esc_attr__(...)
+      - pattern: esc_html_e(...)
+      - pattern: esc_attr_e(...)
+      - pattern: wp_kses(...)
+      - pattern: wp_kses_post(...)
+      # NOTE: sanitize_text_field / strip_tags intentionally NOT listed —
+      # both strip tags but preserve quotes, so stored data in an HTML
+      # attribute context (class="$val", href="$val") is still XSS-exploitable.
+      - pattern: intval(...)
+      - pattern: absint(...)
+      - pattern: (int) $X
+      - pattern: htmlspecialchars(...)
+      - pattern: htmlentities(...)
+      - pattern: wp_send_json(...)
+      - pattern: wp_send_json_success(...)
+      - pattern: wp_send_json_error(...)
+      - pattern: json_encode(...)
+      - pattern: wp_json_encode(...)
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED

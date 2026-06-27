@@ -1,0 +1,54 @@
+rules:
+  - id: wp-rest-unauth-endpoint
+    languages: [php]
+    severity: ERROR
+    message: >
+      REST API endpoint registered with permission_callback => __return_true
+      (or an inline closure that always returns true). The route is reachable
+      by any unauthenticated visitor. If the callback mutates state, exposes
+      sensitive data, or trusts caller-supplied IDs, this is broken access
+      control (CWE-862). The default permission_callback in WordPress is
+      __return_true if omitted — flag missing keys as well.
+    metadata:
+      cwe: "CWE-862: Missing Authorization"
+      confidence: HIGH
+
+    pattern-either:
+      # Explicit __return_true
+      - pattern: |
+          register_rest_route(..., array(
+            ...,
+            'permission_callback' => '__return_true',
+            ...
+          ))
+      - pattern: |
+          register_rest_route(..., [
+            ...,
+            'permission_callback' => '__return_true',
+            ...,
+          ])
+      # Inline closure that unconditionally returns true
+      - pattern: |
+          register_rest_route(..., array(
+            ...,
+            'permission_callback' => function(...) { return true; },
+            ...
+          ))
+      - pattern: |
+          register_rest_route(..., [
+            ...,
+            'permission_callback' => function(...) { return true; },
+            ...,
+          ])
+      # Note: PHP arrow-function syntax (fn(...) => true) is not supported in
+      # semgrep PHP patterns. Plugins using the arrow-fn form will be missed
+      # until upstream support lands — review register_rest_route() callsites
+      # by hand if you suspect arrow-fn usage.
+      # __return_null / __return_zero / __return_empty_array are not auth either —
+      # they're truthy/falsy via WP's check, but commonly used as placeholders.
+      - pattern: |
+          register_rest_route(..., array(
+            ...,
+            'permission_callback' => '__return_null',
+            ...
+          ))

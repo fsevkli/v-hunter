@@ -1,0 +1,59 @@
+rules:
+  - id: wp-php-object-injection-precise
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied data ($SOURCE) is passed directly to unserialize() or
+      maybe_unserialize(), enabling PHP Object Injection (CWE-502).
+      Use JSON instead, or pass allowed_classes: false when deserializing.
+    metadata:
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      confidence: HIGH
+
+    paths:
+      exclude:
+        - "**/vendor/**"
+        - "**/lib/**"
+        - "**/libs/**"
+        - "**/includes/lib/**"
+        - "**/_lib/**"
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      - pattern: filter_input(INPUT_COOKIE, ...)
+      # JSON request body
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      # WP REST API request parameters
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+      - pattern: $REQ->get_body()
+
+    pattern-sinks:
+      # Direct deserialization of user-supplied bytes — the classic PHP OI vector
+      - pattern: unserialize($DATA)
+      - pattern: maybe_unserialize($DATA)
+      # Other deserializers that can instantiate objects
+      - pattern: igbinary_unserialize($DATA)
+      - pattern: yaml_parse($DATA, ...)
+      - pattern: yaml_parse_file($DATA, ...)
+
+    pattern-sanitizers:
+      # unserialize with allowed_classes: false prevents object instantiation
+      - pattern: unserialize($DATA, ['allowed_classes' => false])
+      # JSON round-trip produces plain arrays/scalars — no object injection possible
+      - pattern: json_decode(...)
+      - pattern: json_encode(...)
+      # Integer coercion produces a scalar — safe for numeric IDs
+      - pattern: intval(...)
+      - pattern: absint(...)
+      - pattern: (int) $X

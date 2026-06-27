@@ -1,0 +1,98 @@
+rules:
+  - id: wp-meta-key-injection
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied input flows into the meta_key/option_name argument of an
+      options or metadata update. An attacker can target protected keys such
+      as 'wp_capabilities' (role escalation to administrator), 'wp_user_level',
+      'session_tokens', or any siteurl/active_plugins/template option
+      (CWE-639). Validate the key against a hard-coded allowlist before
+      passing it to update_*_meta() / update_option().
+    metadata:
+      cwe: "CWE-639: Authorization Bypass Through User-Controlled Key"
+      confidence: HIGH
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+
+    pattern-sinks:
+      # Meta-key position is the 2nd argument of *_meta(); focus on it so the
+      # value (3rd arg) being tainted doesn't trigger this rule.
+      #
+      # metavariable-regex on $KEY requires the bound source-form to contain
+      # `$` (PHP variable sigil). This excludes literal keys like
+      # `update_user_meta($id, '_ic_hidden_notices', $val)` where the key is
+      # a hardcoded constant and only the VALUE is tainted — a frequent FP
+      # source in taint mode with focus-metavariable.
+      - patterns:
+          - pattern-either:
+              - pattern: update_user_meta($ID, $KEY, ...)
+              - pattern: add_user_meta($ID, $KEY, ...)
+              - pattern: delete_user_meta($ID, $KEY, ...)
+              - pattern: update_post_meta($ID, $KEY, ...)
+              - pattern: add_post_meta($ID, $KEY, ...)
+              - pattern: delete_post_meta($ID, $KEY, ...)
+              - pattern: update_term_meta($ID, $KEY, ...)
+              - pattern: add_term_meta($ID, $KEY, ...)
+              - pattern: delete_term_meta($ID, $KEY, ...)
+              - pattern: update_comment_meta($ID, $KEY, ...)
+              - pattern: add_comment_meta($ID, $KEY, ...)
+              - pattern: delete_comment_meta($ID, $KEY, ...)
+          - focus-metavariable: $KEY
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: '\$'
+      # update_metadata() takes type, id, key — focus on the key (3rd arg)
+      - patterns:
+          - pattern-either:
+              - pattern: update_metadata($TYPE, $ID, $KEY, ...)
+              - pattern: add_metadata($TYPE, $ID, $KEY, ...)
+              - pattern: delete_metadata($TYPE, $ID, $KEY, ...)
+          - focus-metavariable: $KEY
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: '\$'
+      # Option-name position is the 1st argument of update_option et al.
+      - patterns:
+          - pattern-either:
+              - pattern: update_option($NAME, ...)
+              - pattern: add_option($NAME, ...)
+              - pattern: delete_option($NAME)
+              - pattern: update_site_option($NAME, ...)
+              - pattern: add_site_option($NAME, ...)
+              - pattern: delete_site_option($NAME)
+              - pattern: set_transient($NAME, ...)
+              - pattern: set_site_transient($NAME, ...)
+          - focus-metavariable: $NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: '\$'
+
+    pattern-sanitizers:
+      # sanitize_key() restricts to [a-z0-9_-], which prevents 'wp_capabilities'-style
+      # canonical-key targeting only if combined with an allowlist. We still treat
+      # it as a sanitizer to suppress the most obvious low-value findings; the
+      # triager should still check whether an allowlist follows.
+      - pattern: sanitize_key(...)
+      # Explicit allowlist checks
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED
+      # Hardcoded prefix concatenation is a partial mitigation, but the user
+      # can still control the suffix — DO NOT add string-concat sanitizers.

@@ -1,0 +1,9 @@
+# Semgrep ignore — takes priority over .gitignore for scans.
+# Keep this narrow: only exclude things that generate noise, not test fixtures.
+
+# Third-party code bundled inside plugins
+**/vendor/**
+**/node_modules/**
+
+# Minified JS
+**/*.min.js

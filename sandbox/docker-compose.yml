@@ -1,0 +1,69 @@
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wp
+      MYSQL_PASSWORD: wppass
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - sandbox
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "wp", "-pwppass"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  wordpress:
+    image: wordpress:6.8-php8.3-apache
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: wppass
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_TABLE_PREFIX: wp_
+      WPHUNTER_SANDBOX: "1"
+      WPHUNTER_SHIM_SECRET: "${WPHUNTER_SHIM_SECRET}"
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WPHUNTER_SANDBOX', getenv('WPHUNTER_SANDBOX'));
+        define('WPHUNTER_SHIM_SECRET', getenv('WPHUNTER_SHIM_SECRET'));
+    volumes:
+      - wp_data:/var/www/html
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+      - "${PLUGIN_SOURCE}:/var/www/html/wp-content/plugins/${PLUGIN_SLUG}:ro"
+    ports:
+      - "127.0.0.1:${WP_PORT:-8787}:80"
+    networks:
+      - sandbox
+
+  wpcli:
+    image: wordpress:cli-2.10
+    depends_on:
+      - wordpress
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: wppass
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wp_data:/var/www/html
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+      - "${PLUGIN_SOURCE}:/var/www/html/wp-content/plugins/${PLUGIN_SLUG}:ro"
+    networks:
+      - sandbox
+    user: "33:33"
+
+volumes:
+  db_data:
+  wp_data:
+
+networks:
+  sandbox:
+    driver: bridge

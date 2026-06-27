@@ -1,0 +1,71 @@
+rules:
+  - id: wp-ssti-template-engine
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied input flows into a template engine's render/compile method,
+      enabling Server-Side Template Injection (CWE-1336). Twig / Smarty /
+      Timber / Mustache compile strings as code-aware templates — an attacker
+      who controls the template body can execute arbitrary expressions and,
+      depending on the engine, achieve RCE. Use parameterized templates with
+      a context variable, not a tainted template body.
+    metadata:
+      cwe: "CWE-1336: Improper Neutralization of Special Elements Used in a Template Engine"
+      confidence: HIGH
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+      - pattern: $REQ->get_body()
+
+    pattern-sinks:
+      # Twig — render/createTemplate compile their first-arg as a template body
+      - pattern: $TWIG->render($SRC, ...)
+      - pattern: $TWIG->createTemplate($SRC)
+      - pattern: $TWIG->parse($SRC, ...)
+      # Smarty
+      - pattern: $SMARTY->fetch($SRC, ...)
+      - pattern: $SMARTY->display($SRC, ...)
+      # Mustache / Handlebars
+      - pattern: $MUSTACHE->render($SRC, ...)
+      # Timber (WP-specific Twig wrapper) — compile_string treats the arg as a template
+      - pattern: Timber::compile_string($SRC, ...)
+      - pattern: Timber\Timber::compile_string($SRC, ...)
+      - pattern: \Timber\Timber::compile_string($SRC, ...)
+      # Blade (used by some hybrid plugins via illuminate/view)
+      - pattern: Blade::compileString($SRC)
+      # LightnCandy (Handlebars compiler)
+      - pattern: LightnCandy::compile($SRC, ...)
+      - pattern: \LightnCandy\LightnCandy::compile($SRC, ...)
+      # Generic eval — the ultimate template-injection sink
+      - pattern: eval($SRC)
+      # create_function (deprecated but still seen in older builder plugins)
+      - pattern: create_function($ARGS, $SRC)
+
+    pattern-sanitizers:
+      # Casting / numeric coercion
+      - pattern: intval(...)
+      - pattern: absint(...)
+      - pattern: (int) $X
+      # WP's escaping helpers don't sanitize for template engines, but
+      # passing a tainted value as a *context variable* (named argument)
+      # is safe — that's a different shape than passing it as the template body.
+      # We can't model "second argument is safe" cleanly here, so the rule
+      # accepts FPs that the triager must resolve.
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED

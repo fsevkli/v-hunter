@@ -1,0 +1,158 @@
+{
+  "_meta": {
+    "generated": "2026-05-05",
+    "threshold_pct": 33,
+    "scan_runs": 3,
+    "notes": "Counts are the per-rule MAXIMUM across 3 semgrep runs (rglob+batching, no git-ls-files). Using max-of-3 stabilises against taint-engine non-determinism. The 33% drop threshold absorbs remaining run-to-run variance."
+  },
+  "bookingpress-appointment-booking/1.0.10": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 19,
+    "wp-reflected-xss": 8,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 4,
+    "wp-php-object-injection": 6,
+    "wp-ssrf": 2
+  },
+  "bookingpress-appointment-booking/1.0.11": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 17,
+    "wp-reflected-xss": 8,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 4,
+    "wp-php-object-injection": 6,
+    "wp-ssrf": 2
+  },
+  "classic-editor/1.6.3": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 0,
+    "wp-reflected-xss": 0,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 0,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 0
+  },
+  "contact-form-to-db/1.5.7": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 19,
+    "wp-reflected-xss": 5,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 15,
+    "wp-php-object-injection": 1,
+    "wp-ssrf": 4
+  },
+  "download-manager/3.1.24": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 2,
+    "wp-reflected-xss": 14,
+    "wp-arbitrary-file-upload": 1,
+    "wp-path-traversal": 2,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 1
+  },
+  "download-manager/3.1.25": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 2,
+    "wp-reflected-xss": 15,
+    "wp-arbitrary-file-upload": 1,
+    "wp-path-traversal": 2,
+    "wp-php-object-injection": 2,
+    "wp-ssrf": 1
+  },
+  "hello-dolly/1.7.2": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 0,
+    "wp-reflected-xss": 0,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 0,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 0
+  },
+  "perfect-survey/1.5.1": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 0,
+    "wp-reflected-xss": 2,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 0,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 0
+  },
+  "perfect-survey/1.5.2": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 0,
+    "wp-reflected-xss": 0,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 0,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 0
+  },
+  "popup-builder/3.62": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 0,
+    "wp-reflected-xss": 9,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 1,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 2
+  },
+  "popup-builder/3.63": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 0,
+    "wp-reflected-xss": 9,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 1,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 2
+  },
+  "wp-fastest-cache/0.9.4": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 0,
+    "wp-reflected-xss": 8,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 0,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 1
+  },
+  "wp-pagenavi/2.94.5": {
+    "wp-missing-nonce-check": 0,
+    "wp-missing-cap-check": 0,
+    "wp-sqli": 0,
+    "wp-reflected-xss": 0,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 0,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 0
+  },
+  "wp-statistics/13.0.7": {
+    "wp-missing-nonce-check": 1,
+    "wp-missing-cap-check": 1,
+    "wp-sqli": 2,
+    "wp-reflected-xss": 3,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 0,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 0
+  },
+  "wp-statistics/13.0.8": {
+    "wp-missing-nonce-check": 1,
+    "wp-missing-cap-check": 1,
+    "wp-sqli": 2,
+    "wp-reflected-xss": 3,
+    "wp-arbitrary-file-upload": 0,
+    "wp-path-traversal": 0,
+    "wp-php-object-injection": 0,
+    "wp-ssrf": 0
+  }
+}

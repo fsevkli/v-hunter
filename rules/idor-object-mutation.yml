@@ -1,0 +1,77 @@
+rules:
+  - id: wp-idor-object-mutation
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied object identifier reaches a sensitive mutation/delete
+      without a per-object capability check such as current_user_can('edit_post', $id)
+      (CWE-639 — IDOR). A capability check that doesn't pass the object ID
+      (e.g. current_user_can('edit_posts')) only verifies the user's general
+      role, not their rights to *this specific* object — flag those too. The
+      triager should confirm the principal must own/manage the referenced row.
+    metadata:
+      cwe: "CWE-639: Authorization Bypass Through User-Controlled Key"
+      confidence: MEDIUM
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+
+    pattern-sinks:
+      # Single-arg deletes — user shouldn't be able to name any ID
+      - patterns:
+          - pattern-either:
+              - pattern: wp_delete_post($ID, ...)
+              - pattern: wp_trash_post($ID)
+              - pattern: wp_delete_user($ID, ...)
+              - pattern: wp_delete_attachment($ID, ...)
+              - pattern: wp_delete_comment($ID, ...)
+              - pattern: wp_delete_term($ID, ...)
+          - focus-metavariable: $ID
+      # Updates by ID — first-arg form
+      - patterns:
+          - pattern-either:
+              - pattern: update_user_meta($ID, ...)
+              - pattern: update_post_meta($ID, ...)
+              - pattern: update_term_meta($ID, ...)
+              - pattern: update_comment_meta($ID, ...)
+              - pattern: wp_set_password($PW, $ID)
+              - pattern: wp_update_comment(array('comment_ID' => $ID, ...), ...)
+          - focus-metavariable: $ID
+      # wp_update_post / wp_update_user — ID is inside the array as 'ID' key
+      - patterns:
+          - pattern-either:
+              - pattern: wp_update_post(array('ID' => $ID, ...), ...)
+              - pattern: wp_update_post(['ID' => $ID, ...], ...)
+              - pattern: wp_update_user(array('ID' => $ID, ...))
+              - pattern: wp_update_user(['ID' => $ID, ...])
+          - focus-metavariable: $ID
+
+    pattern-sanitizers:
+      # Per-object capability check — the only auth pattern that prevents IDOR.
+      # focus-metavariable ensures we clear taint only on the matching ID arg.
+      - patterns:
+          - pattern-either:
+              - pattern: current_user_can($CAP, $ID)
+              - pattern: user_can($USER, $CAP, $ID)
+          - focus-metavariable: $ID
+      # author_can() compares post ownership to current user
+      - pattern: author_can($ID, ...)
+      # Explicit allowlist
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED

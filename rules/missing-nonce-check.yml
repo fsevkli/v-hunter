@@ -1,0 +1,130 @@
+rules:
+  - id: wp-missing-nonce-check-precise
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      A state-mutating action is exposed inside a WordPress hook/AJAX endpoint
+      without visible anti-CSRF nonce verification (CWE-352).
+    metadata:
+      cwe: "CWE-352: Cross-Site Request Forgery"
+      confidence: HIGH
+
+    # Target functions explicitly registered to handle admin actions or standard authenticated AJAX
+    pattern-inside-either:
+      # ----- Named function callbacks -----
+      - pattern: |
+          add_action('wp_ajax_'.$ACTION, '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('admin_post_'.$ACTION, '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('admin_init', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('init', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      - pattern: |
+          add_action('wp_loaded', '$FUNC');
+          ...
+          function $FUNC(...) { ... }
+      # ----- Array callbacks: instance / static method -----
+      - pattern: |
+          add_action('wp_ajax_'.$ACTION, [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('admin_post_'.$ACTION, [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('admin_init', [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('init', [$OBJ, '$METHOD']);
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('wp_ajax_'.$ACTION, array($OBJ, '$METHOD'));
+          ...
+          function $METHOD(...) { ... }
+      - pattern: |
+          add_action('admin_post_'.$ACTION, array($OBJ, '$METHOD'));
+          ...
+          function $METHOD(...) { ... }
+      # ----- Closure callbacks -----
+      - pattern: |
+          add_action('wp_ajax_'.$ACTION, function(...) {
+            ...
+          });
+      - pattern: |
+          add_action('admin_post_'.$ACTION, function(...) {
+            ...
+          });
+      - pattern: |
+          add_action('admin_init', function(...) {
+            ...
+          });
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      # JSON request body
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      # WP REST API request parameters
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+      - pattern: $REQ->get_body()
+
+    # Limit sinks strictly to high-impact administrative data mutations
+    pattern-sinks:
+      # Options & config mutation
+      - pattern: update_option(...)
+      - pattern: add_option(...)
+      - pattern: delete_option(...)
+      - pattern: update_site_option(...)
+      - pattern: add_site_option(...)
+      - pattern: delete_site_option(...)
+      # User accounts & meta mutation
+      - pattern: wp_insert_user(...)
+      - pattern: wp_update_user(...)
+      - pattern: wp_set_password(...)
+      - pattern: wp_delete_user(...)
+      - pattern: update_user_meta(...)
+      - pattern: delete_user_meta(...)
+      - pattern: add_user_meta(...)
+      # Post / content
+      - pattern: wp_insert_post(...)
+      - pattern: wp_update_post(...)
+      - pattern: wp_delete_post(...)
+      - pattern: wp_trash_post(...)
+      - pattern: update_post_meta(...)
+      - pattern: delete_post_meta(...)
+      # Term / taxonomy
+      - pattern: wp_set_object_terms(...)
+      - pattern: wp_insert_term(...)
+      - pattern: wp_delete_term(...)
+      # Raw DB mutations (write paths only — selects aren't CSRF-relevant)
+      - pattern: $wpdb->insert(...)
+      - pattern: $wpdb->update(...)
+      - pattern: $wpdb->delete(...)
+      - pattern: $wpdb->replace(...)
+      # File operations triggered by request
+      - pattern: unlink(...)
+      - pattern: move_uploaded_file(...)
+
+    # Cryptographic anti-CSRF helpers are the ONLY acceptable sanitizers for a CSRF rule
+    pattern-sanitizers:
+      - pattern: check_ajax_referer(...)
+      - pattern: wp_verify_nonce(...)
+      - pattern: check_admin_referer(...)

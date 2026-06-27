@@ -1,0 +1,66 @@
+rules:
+  - id: wp-ssrf-precise
+    mode: taint
+    languages: [php]
+    severity: ERROR
+    message: >
+      User-supplied URL ($SOURCE) passed to an HTTP client without validation.
+      Validate the URL with wp_http_validate_url() to prevent SSRF (CWE-918).
+    metadata:
+      cwe: "CWE-918: Server-Side Request Forgery (SSRF)"
+      confidence: HIGH
+
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+      - pattern: filter_input(INPUT_GET, ...)
+      - pattern: filter_input(INPUT_POST, ...)
+      - pattern: filter_input(INPUT_REQUEST, ...)
+      # JSON request body
+      - pattern: json_decode(file_get_contents('php://input'), ...)
+      - pattern: file_get_contents('php://input')
+      # WP REST API request parameters
+      - pattern: $REQ->get_param(...)
+      - pattern: $REQ->get_params()
+      - pattern: $REQ->get_json_params()
+      - pattern: $REQ->get_body_params()
+
+    pattern-sinks:
+      # Raw WordPress HTTP methods — no built-in URL safety enforcement
+      - pattern: wp_remote_get($URL, ...)
+      - pattern: wp_remote_post($URL, ...)
+      - pattern: wp_remote_request($URL, ...)
+      - pattern: wp_remote_head($URL, ...)
+      # wp_safe_remote_* validate the URL internally, but DNS rebinding and
+      # allowlist gaps mean a user-controlled URL can still reach internal services.
+      # Send these to LLM triage rather than auto-clearing them.
+      - pattern: wp_safe_remote_get($URL, ...)
+      - pattern: wp_safe_remote_post($URL, ...)
+      - pattern: wp_safe_remote_request($URL, ...)
+      - pattern: wp_safe_remote_head($URL, ...)
+      - pattern: download_url($URL, ...)
+      # WP_Http class direct usage
+      - pattern: $HTTP->request($URL, ...)
+      # Raw PHP cURL
+      - pattern: curl_setopt(..., CURLOPT_URL, $URL)
+      - pattern: curl_init($URL)
+      # PHP stream / socket
+      - pattern: fsockopen($URL, ...)
+      - pattern: pfsockopen($URL, ...)
+      - pattern: stream_socket_client($URL, ...)
+      # file_get_contents with a URL behaves as an HTTP client. The path-traversal
+      # rule also lists this; keep both — different vuln class, same sink shape.
+      - pattern: file_get_contents($URL, ...)
+      - pattern: fopen($URL, ...)
+      - pattern: get_headers($URL, ...)
+
+    pattern-sanitizers:
+      # wp_http_validate_url() explicitly blocks private/loopback IP ranges
+      - pattern: wp_http_validate_url(...)
+      - patterns:
+          - pattern-either:
+              - pattern: in_array($TAINTED, ...)
+              - pattern: array_key_exists($TAINTED, ...)
+          - focus-metavariable: $TAINTED
